@@ -1986,7 +1986,7 @@ function goalTarget() {
   if (!kind) return null;
   const o = L.find(o => o.kind === kind && (kind !== "plot" || o.i === goal.i));
   if (!o) return null;
-  const off = { plot: 22, door: 22, exit: 46 }[kind] || 0, near = o.r && dist(pl.x, pl.y, o.x, o.y) < o.r + 10;
+  const off = { plot: 22, door: 22, exit: 72 }[kind] || 0, near = o.r && dist(pl.x, pl.y, o.x, o.y) < o.r + 10;
   return { x: kind === "bed" ? 112 : o.x, ly: (kind === "bed" ? 196 : o.ly) + off, near };
 }
 function updGoal() {
