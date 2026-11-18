@@ -4,6 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#2b2a22">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="screen-orientation" content="landscape">
+<meta name="x5-orientation" content="landscape">
+<meta name="x5-fullscreen" content="true">
+<meta name="full-screen" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>🌱 Il Mio Orticello</title>
 <link id="fav" rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🌱%3C/text%3E%3C/svg%3E">
 <style>
@@ -78,6 +87,39 @@ body[data-act="4"] .card .ln.red{color:#e04040}
 #dbg{position:fixed;right:6px;top:56px;z-index:80;display:flex;flex-direction:column;gap:3px;font-size:10px;max-width:150px}
 #dbg button{font-size:10px;padding:3px 6px;background:#111;color:#0f0;border:1px solid #0f0;border-radius:6px;box-shadow:none}
 #dbg div{background:#111;color:#0f0;padding:4px 6px;border-radius:6px;white-space:pre}
+/* ---- avvio a schermo intero + orizzontale ---- */
+#start,#rotate{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:20px;color:#3b2a1e;background:radial-gradient(circle at 50% 40%,#bfe39a,#7fb85a 60%,#4f8a3a)}
+#start.hidden,#rotate.hidden{display:none}
+#start .logo{font-size:min(16vh,72px);animation:bob 1.6s ease-in-out infinite}
+#start h1{margin:0;font-size:min(9vh,40px);text-shadow:0 3px 0 #f6ecd9}
+#start button{font-size:min(6vh,24px);padding:12px 28px;background:#ffd27a;animation:pulse 1.4s ease-in-out infinite}
+#start p{margin:0;font-size:13px;font-weight:700;opacity:.75;max-width:420px}
+#rotate{z-index:110;background:#1d1a16;color:#f6ecd9;display:none}
+#rotate .ph{font-size:64px;animation:rot 2s ease-in-out infinite}
+#rotate b{font-size:20px}
+@media (orientation:portrait){body.touch #rotate:not(.hidden){display:flex}}
+@keyframes bob{50%{transform:translateY(-8px)}}
+@keyframes pulse{50%{transform:scale(1.06)}}
+@keyframes rot{0%,20%{transform:rotate(0)}60%,100%{transform:rotate(-90deg)}}
+/* layout orizzontale basso (smartphone) */
+@media (orientation:landscape) and (max-height:500px){
+  #hud{top:calc(6px + env(safe-area-inset-top));left:calc(8px + env(safe-area-inset-left));right:calc(8px + env(safe-area-inset-right))}
+  .pill{font-size:13px;padding:3px 8px;border-width:2px}
+  #hud button{padding:3px 8px;border-width:2px}
+  #bar{bottom:calc(8px + env(safe-area-inset-bottom))}
+  #bar .slot{width:44px;height:44px;font-size:21px}
+  #act{width:78px;height:78px;bottom:calc(14px + env(safe-area-inset-bottom));right:calc(14px + env(safe-area-inset-right))}
+  body.touch #bar{right:calc(104px + env(safe-area-inset-right))}
+  #toast{top:16%;font-size:14px;max-width:70vw}
+  .ov{padding:8px calc(10px + env(safe-area-inset-right)) 8px calc(10px + env(safe-area-inset-left))}
+  .card{max-width:min(640px,92vw);max-height:calc(100vh - 16px);padding:12px 16px;border-width:3px}
+  .card h2{font-size:17px;margin-bottom:6px}
+  .card .ln{margin:6px 0;font-size:14px}
+  .card .go{margin-top:10px;padding:8px}
+  .card input{margin-top:4px;padding:8px 10px}
+  #crash .big{font-size:44px}
+  #dbg{top:44px}
+}
 @keyframes fin{to{opacity:1}}
 </style>
 </head>
@@ -100,6 +142,8 @@ body[data-act="4"] .card .ln.red{color:#e04040}
 <div id="modal" class="ov hidden"><div class="card"></div></div>
 <div id="ending" class="ov hidden"><div class="card"></div></div>
 <div id="crash" class="hidden"></div>
+<div id="rotate"><div class="ph">📱</div><b>Ruota il telefono</b><div>Il Mio Orticello si gioca in orizzontale 🌱</div></div>
+<div id="start"><div class="logo">🌱</div><h1>Il Mio Orticello</h1><button id="startBtn">▶ Tocca per giocare</button><p id="startHint"></p></div>
 
 <script type="module">
 /* =====================================================================
@@ -1606,7 +1650,31 @@ async function boot() {
   applyAbsence(b - a, "closed", a, b);
   save();
 }
-boot();
+/* ---------------- schermo intero + orizzontale ---------------- */
+const fsEl = document.documentElement;
+const fsOn = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+const fsCan = !!(fsEl.requestFullscreen || fsEl.webkitRequestFullscreen);
+async function goFull() {
+  try {
+    if (!fsOn() && fsCan) {
+      if (fsEl.requestFullscreen) await fsEl.requestFullscreen({ navigationUI: "hide" });
+      else fsEl.webkitRequestFullscreen();
+    }
+  } catch {}
+  try { if (screen.orientation && screen.orientation.lock) await screen.orientation.lock("landscape"); } catch {}
+  setTimeout(resize, 250);
+}
+const standalone = matchMedia("(display-mode: fullscreen), (display-mode: standalone)").matches || navigator.standalone;
+if (isTouch && !fsCan && !standalone) $("#startHint").textContent = "📲 Per il vero schermo intero: Condividi → «Aggiungi alla schermata Home», poi apri il gioco da lì.";
+/* se si esce dallo schermo intero, il prossimo tocco ci rientra */
+if (isTouch) addEventListener("pointerup", () => { if (!fsOn() && $("#start").classList.contains("hidden")) goFull(); }, true);
+["fullscreenchange", "webkitfullscreenchange"].forEach(ev => document.addEventListener(ev, () => setTimeout(resize, 250)));
+addEventListener("orientationchange", () => setTimeout(resize, 300));
+$("#startBtn").addEventListener("click", () => {
+  SND.init(); goFull();
+  $("#start").classList.add("hidden");
+  boot();
+}, { once: true });
 </script>
 </body>
 </html>
