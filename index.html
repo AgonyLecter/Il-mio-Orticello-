@@ -190,6 +190,12 @@ body[data-act="4"] .card .go{background:#6a1010;box-shadow:inset 0 -4px 0 #3a080
   .card .ln{font-size:15px;margin:6px 0}
   #toast{font-size:14px;padding:8px 14px}
 }
+#goal{position:fixed;top:calc(50px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:5;pointer-events:none;max-width:72vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--px);font-size:14px;padding:5px 12px;background:var(--paper);color:var(--frame);border:3px solid var(--frame);border-radius:4px;box-shadow:inset 0 -3px 0 #c8c8d0,0 3px 0 rgba(0,0,0,.4);transition:opacity .3s}
+#goal:empty,body.final #goal{display:none}
+#goal.sleep{background:#f8d048;box-shadow:inset 0 -3px 0 #d0a030,0 3px 0 rgba(0,0,0,.4);animation:pulse 1.6s ease-in-out infinite}
+body[data-act="3"] #goal.sleep{background:#cdbf9a;box-shadow:inset 0 -3px 0 #a09070,0 3px 0 rgba(0,0,0,.4)}
+body[data-act="4"] #goal{background:#2a221d;color:#e04040;border-color:#000;box-shadow:none}
+@media (orientation:landscape) and (max-height:500px){#toast{top:calc(78px + env(safe-area-inset-top))}#goal{top:calc(44px + env(safe-area-inset-top));font-size:13px;padding:3px 10px}}
 @keyframes fin{to{opacity:1}}
 </style>
 </head>
@@ -204,6 +210,7 @@ body[data-act="4"] .card .go{background:#6a1010;box-shadow:inset 0 -4px 0 #3a080
   <button id="mute">🔊</button>
   <button id="diary">📖</button>
 </div>
+<div id="goal"></div>
 <div id="bar"></div>
 <button id="act">Azione</button>
 <div id="toast"></div>
@@ -1941,6 +1948,64 @@ function drawParts(t) {
   }
 }
 
+/* =====================================================================
+   OBIETTIVO: dice sempre cosa fare; quando non resta niente → letto + chiudi
+   ===================================================================== */
+const GOAL_T = {
+  harvest: ["🧺 Raccogli le piantine pronte", "🧺 Raccogli le piantine pronte", "🧺 Raccogli il raccolto", "Raccogli. È maturo.", "Raccogli."],
+  fill:    ["🪣 Riempi l'annaffiatoio al pozzo", "🪣 Riempi l'annaffiatoio al pozzo", "🪣 Vai al pozzo a prendere l'acqua", "Vai al pozzo. Ti aspetta.", "Il pozzo."],
+  water:   ["💧 Innaffia le piantine", "💧 Innaffia le piantine", "💧 Innaffia le piantine", "Innaffia. Hanno sete.", "Hanno sete."],
+  plant:   ["🌱 Pianta un seme nell'orto", "🌱 Pianta un seme nell'orto", "🌱 Pianta un seme", "Pianta. La terra è morbida.", "Pianta."],
+  sell:    ["🏪 Vendi il raccolto al mercato", "🏪 Vendi il raccolto al mercato", "🏪 Vendi il raccolto al mercato", "Vendi. Qualcuno compra sempre.", "Vendi la carne."],
+  under:   ["", "", "", "🪢 Scendi nel pozzo", "🪢 Scendi nel pozzo"],
+  sleep:   ["🛏️ Hai finito! Vai a letto, poi chiudi il gioco 🌙", "🛏️ Hai finito! Vai a letto, poi chiudi il gioco 🌙", "🛏️ Hai finito. Vai a letto e chiudi il gioco", "Vai a letto. Chiudi gli occhi. Chiudi il gioco.", "Chiudi gli occhi. Chiudi il gioco."],
+};
+let goal = { k: "", i: -1 }, goalTxt = "", sleepHinted = false;
+function computeGoal() {
+  if (!p || ended || scene === "final") return { k: "" };
+  const a = p.act, plots = p.plots.map((q, i) => ({ q, i })).filter(o => !o.q.t);
+  if (p.energy <= 0) return { k: "sleep" };
+  const ripe = plots.find(o => o.q.s && o.q.g >= SEEDS[o.q.s].grow); if (ripe) return { k: "harvest", i: ripe.i };
+  const dry = plots.find(o => o.q.s && !o.q.w && o.q.g < SEEDS[o.q.s].grow);
+  if (dry) return p.can > 0 ? { k: "water", i: dry.i } : { k: "fill" };
+  const canSell = Object.values(p.basket).some(n => n > 0) && (a >= 4 || marketOpen());
+  const cheapest = Math.min(...Object.keys(SEEDS).filter(k => p.seeds[k] && !SEEDS[k].odd).map(k => SEEDS[k].cost));
+  const empty = plots.find(o => !o.q.s);
+  if (empty && p.coins >= cheapest) return { k: "plant", i: empty.i };
+  if (canSell) return { k: "sell" };
+  if (a >= 3 && p.flags.well && !p.flags.under) return { k: "under" };
+  return { k: "sleep" };
+}
+function goalTarget() {
+  if (!goal.k || !p) return null;
+  const L = interactables(), k = goal.k, a = p.act;
+  let kind;
+  if (scene === "farm") kind = { harvest: "plot", water: "plot", plant: "plot", fill: "well", sell: "stall", under: "rope", sleep: "door" }[k];
+  else if (scene === "house") kind = k === "sleep" ? (a >= 4 ? null : "bed") : "exit";
+  else if (scene === "under") kind = "up";
+  if (!kind) return null;
+  const o = L.find(o => o.kind === kind && (kind !== "plot" || o.i === goal.i));
+  return o ? (kind === "bed" ? { x: 110, ly: 140 } : o) : null;
+}
+function updGoal() {
+  goal = computeGoal();
+  const t = goal.k ? GOAL_T[goal.k][Math.min(p ? p.act : 0, 4)] : "";
+  if (t !== goalTxt) { goalTxt = t; const el = $("#goal"); el.textContent = t; el.classList.toggle("sleep", goal.k === "sleep"); }
+  if (goal.k === "sleep" && !sleepHinted && !mOpen && !frozen) {
+    sleepHinted = true; const a = p.act;
+    setTimeout(() => toast(a >= 3 ? "Hai finito.\nVai a letto. Poi chiudi il gioco.\nCi penso io." : p.energy <= 0 ? "😴 Energia finita!\nVai a letto in casa, poi chiudi il gioco.\nL'orto cresce mentre dormi 🌙" : "✨ Per oggi hai fatto tutto!\nVai a letto in casa, poi chiudi il gioco.\nL'orto cresce mentre dormi 🌙"), 600);
+  }
+  if (goal.k !== "sleep") sleepHinted = false;
+}
+setInterval(updGoal, 500);
+const ARROW = [".kkkkk.", ".kyyyk.", "kkyyykk", "kyyyyyk", ".kyyyk.", "..kyk..", "...k..."];
+function drawGoalArrow(t) {
+  if (frozen || mOpen) return;
+  const o = goalTarget(); if (!o) return;
+  const red = p.act >= 3, s = spr("arrow" + red, ARROW, { k: OUT, y: red ? "#c02020" : "#f8d048" }), bob = Math.round(Math.abs(Math.sin(t / 220)) * 3);
+  pg.drawImage(s, A(o.x) - 3, A(o.ly + (o.kind === "plot" ? 22 : o.kind === "door" ? 22 : 0)) - 10 - bob);
+}
+
 /* ---------------- loop di render ---------------- */
 let last = performance.now(), lastLbl = "";
 function frame(t) {
@@ -1989,7 +2054,7 @@ function frame(t) {
     drawParts(t); if (scene === "farm" || scene === "final") drawCritters(t);
     if (scene === "final") { const r = 10 + (Math.sin(t / 300) > 0 ? 1 : 0); for (let k = 0; k < 16; k++) if ((k + Math.floor(t / 150)) % 2) { const an = k / 16 * Math.PI * 2; P(A(HOUSE.x) + Math.cos(an) * r, A(HOUSE.y + 14) + Math.sin(an) * r * 0.6, "#fff"); } }
     for (let i = fxl.length - 1; i >= 0; i--) { const f = fxl[i]; f.y -= dt * 30; f.a -= dt * 0.8; if (f.a <= 0) { fxl.splice(i, 1); continue; } if (f.a > 0.25 || Math.sin(t / 40) > 0) txt(f.t, f.x, f.y, 18, "#fff"); }
-    drawLight(t); drawGlowBugs(t);
+    drawLight(t); drawGlowBugs(t); drawGoalArrow(t);
     if (scene === "under") { const hx = A(HEART.x), hy = A(HEART.y), pu = Math.sin(t / 380) > 0.2 ? 1 : 0; pg.globalAlpha = 0.18 + pu * 0.08; E(hx, hy, A(HEART.r) + 8 + pu * 2, A(HEART.r) * 0.85 + 6 + pu * 2, "#a01010"); pg.globalAlpha = 1; }
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = false;
     ctx.drawImage(pc, 0, 0, pc.width * kpx, pc.height * kpx);
