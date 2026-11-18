@@ -1985,7 +1985,9 @@ function goalTarget() {
   else if (scene === "under") kind = "up";
   if (!kind) return null;
   const o = L.find(o => o.kind === kind && (kind !== "plot" || o.i === goal.i));
-  return o ? (kind === "bed" ? { x: 110, ly: 140 } : o) : null;
+  if (!o) return null;
+  const off = { plot: 22, door: 22, exit: 46 }[kind] || 0, near = o.r && dist(pl.x, pl.y, o.x, o.y) < o.r + 10;
+  return { x: kind === "bed" ? 112 : o.x, ly: (kind === "bed" ? 196 : o.ly) + off, near };
 }
 function updGoal() {
   goal = computeGoal();
@@ -1998,12 +2000,12 @@ function updGoal() {
   if (goal.k !== "sleep") sleepHinted = false;
 }
 setInterval(updGoal, 500);
-const ARROW = [".kkkkk.", ".kyyyk.", "kkyyykk", "kyyyyyk", ".kyyyk.", "..kyk..", "...k..."];
+const ARROW = ["..kkkkk..", "..kyyyk..", "..kyyyk..", "kkkyyykkk", "kyyyyyyyk", ".kyyyyyk.", "..kyyyk..", "...kyk...", "....k...."];
 function drawGoalArrow(t) {
   if (frozen || mOpen) return;
-  const o = goalTarget(); if (!o) return;
+  const o = goalTarget(); if (!o || o.near) return;
   const red = p.act >= 3, s = spr("arrow" + red, ARROW, { k: OUT, y: red ? "#c02020" : "#f8d048" }), bob = Math.round(Math.abs(Math.sin(t / 220)) * 3);
-  pg.drawImage(s, A(o.x) - 3, A(o.ly + (o.kind === "plot" ? 22 : o.kind === "door" ? 22 : 0)) - 10 - bob);
+  pg.drawImage(s, A(o.x) - 4, A(o.ly) - 12 - bob);
 }
 
 /* ---------------- loop di render ---------------- */
