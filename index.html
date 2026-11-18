@@ -785,7 +785,7 @@ function useEnergy() {
   return true;
 }
 const fxl = [];
-const pop = (x, y, t) => fxl.push({ x, y, t, a: 1 });
+const pop = (x, y, t) => { fxl.push({ x, y, t, a: 1 }); burst(x, y + 30, t); };
 function doAction() {
   if (!p || frozen || mOpen || ended) return;
   const o = target(); if (!o || !o.r) return;
@@ -860,7 +860,7 @@ function mounds() {
 function changeScene(s, x, y) {
   frozen = true; $("#fade").classList.add("on");
   setTimeout(() => {
-    scene = s; pl.x = x; pl.y = y; computeV();
+    scene = s; pl.x = x; pl.y = y; computeV(); parts.length = 0;
     document.body.classList.toggle("nohud", s !== "farm");
     $("#fade").classList.remove("on"); frozen = false;
     if (s === "under" && !p.flags.underSeen) { p.flags.underSeen = 1; setTimeout(() => toast("È più profondo di quanto sembrasse.\nCi sono dei tumuli. Hanno dei nomi."), 600); }
@@ -1603,7 +1603,8 @@ function treeCanvas(tr, a) {
 function drawTree(tr, t) {
   const a = V.act, c = treeCanvas(tr, a);
   E(A(tr.x), A(tr.y), Math.round(8 * tr.s), Math.round(2.5 * tr.s), "rgba(0,0,0,.22)");
-  pg.drawImage(c, A(tr.x) - (c.width >> 1), A(tr.y) - c.height + 2);
+  const x0 = A(tr.x) - (c.width >> 1), y0 = A(tr.y) - c.height + 2, cut = c.height - Math.round(7 * tr.s) - 4, sw = Math.sin(t / (a >= 3 ? 2300 : 1100) + tr.x) > 0.55 ? 1 : 0;
+  pg.drawImage(c, 0, 0, c.width, cut, x0 + sw, y0, c.width, cut); pg.drawImage(c, 0, cut, c.width, c.height - cut, x0, y0 + cut, c.width, c.height - cut);
 }
 
 /* --- interno casa --- */
@@ -1707,7 +1708,7 @@ function drawLight(t) {
   const a = p.act;
   if (scene === "farm") { d = Math.min(0.9, (isNight() ? 0.55 : 0) + [0, 0, 0.1, 0.32, 0.55][a]); holes.push([pl.x, pl.y - 30, a >= 4 ? 150 : 210]); if (isNight() || a >= 3) holes.push([HOUSE.x - 56, HOUSE.y - 75, 70], [HOUSE.x + 56, HOUSE.y - 75, 60]); }
   else if (scene === "house") { d = Math.min(0.85, [0.05, 0.1, 0.25, 0.42, 0.6][a] + (isNight() ? 0.2 : 0)); holes.push([pl.x, pl.y - 30, 220], [525, 310, a >= 1 ? 140 : 90], [135, 60, 90]); }
-  else if (scene === "under") { d = 0.94; holes.push([pl.x, pl.y - 30, 165], [110, 80, 120], [HEART.x, HEART.y, 150]); }
+  else if (scene === "under") { d = 0.92; holes.push([pl.x, pl.y - 30, 210], [110, 80, 130], [HEART.x, HEART.y, 200]); }
   else d = 0;
   if (d <= 0) return;
   if (light.width !== pc.width || light.height !== pc.height) { light.width = pc.width; light.height = pc.height; }
@@ -1749,6 +1750,126 @@ function labelBox(s, wx, wy) {
   ctx.fillStyle = dark ? "#1e1a17" : "#f8f8f0"; ctx.fillRect(sx, sy, w, h);
   ctx.fillStyle = dark ? "#5a1010" : "#6890c8"; ctx.fillRect(sx + b, sy + b, w - 2 * b, b);
   ctx.fillStyle = dark ? "#ddd" : "#383848"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(s, sx + w / 2, sy + h / 2 + b / 2); ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+}
+
+/* =====================================================================
+   ANIMAZIONI PIXEL — particelle, animaletti, vita ambientale
+   (coordinate mondo, disegno in pixel art)
+   ===================================================================== */
+const parts = [];
+function part(o) { if (parts.length < 400) parts.push(Object.assign({ vx: 0, vy: 0, g: 0, life: 1, max: 1, s: 1, glow: 0 }, o)); }
+function burst(x, y, t) {
+  const a = p ? p.act : 0;
+  if (t.includes("💧")) for (let k = 0; k < 12; k++) part({ x: x + (Math.random() - 0.5) * 30, y: y - 10, vx: (Math.random() - 0.5) * 70, vy: -40 - Math.random() * 70, g: 260, life: 0.6, max: 0.6, col: a >= 4 ? "#a02020" : k % 3 ? "#8cc8f0" : "#e0f4ff", ground: y + 6 });
+  else if (t.includes("🌱")) for (let k = 0; k < 9; k++) part({ x: x + (Math.random() - 0.5) * 24, y, vx: (Math.random() - 0.5) * 80, vy: -30 - Math.random() * 50, g: 220, life: 0.5, max: 0.5, col: k % 2 ? "#6e4428" : "#a06a44", ground: y + 6 });
+  else if (t.startsWith("+1")) for (let k = 0; k < 10; k++) { const an = k / 10 * Math.PI * 2; part({ x, y: y - 10, vx: Math.cos(an) * 60, vy: Math.sin(an) * 60 - 20, life: 0.6, max: 0.6, col: a >= 4 ? "#c02020" : k % 2 ? "#fff8b0" : "#ffffff", kind: a >= 4 ? 0 : "spark", g: a >= 4 ? 200 : 0, ground: a >= 4 ? y + 6 : 0 }); }
+}
+/* animaletti persistenti della fattoria */
+const critters = { flies: [], bugs: [], crows: [], init: false };
+function initCritters() {
+  critters.init = true;
+  for (let k = 0; k < 4; k++) critters.flies.push({ x: 300 + Math.random() * 800, y: 200 + Math.random() * 600, tx: 0, ty: 0, c: ["#f8f8f8", "#f8d040", "#f890b0", "#a0c8f8"][k], ph: Math.random() * 6 });
+  for (let k = 0; k < 14; k++) critters.bugs.push({ x: Math.random() * W, y: Math.random() * HH, ph: Math.random() * 6, sp: 0.6 + Math.random() });
+  const perch = [[FIELD.x0 + 40, FIELD.y0 - 26], [FIELD.x0 + 160, FIELD.y0 - 26], [FIELD.x1 - 40, FIELD.y0 - 26], [STALL.x + 40, STALL.y - 100], [WELL.x, WELL.y - 120], [HOUSE.x - 60, HOUSE.y - 160], [FIELD.x1, FIELD.y1 - 26], [GINO.x + 40, GINO.y - 120]];
+  perch.forEach(([x, y], k) => critters.crows.push({ hx: x, hy: y, x, y, st: "sit", t: Math.random() * 3, face: k % 2 ? 1 : -1, show: k }));
+}
+function crowSprite(fr) {
+  return spr("crow" + fr, fr === 0 ? ["..kk..", ".kkkw.", "kkkkko", ".kkkk.", "..k.k."] : fr === 1 ? ["k....k", "kk..kk", ".kkkkw", "..kkko", "......"] : ["......", "..kkkw", "kkkkko", "k.kk.k", "......"], { k: "#151218", w: "#e8e0d0", o: "#c88a20" });
+}
+function updCritters(dt, t) {
+  if (!critters.init) initCritters();
+  const a = V.act;
+  for (const f of critters.flies) {
+    if (!f.tx || dist(f.x, f.y, f.tx, f.ty) < 10) { f.tx = clamp(f.x + (Math.random() - 0.5) * 300, 100, W - 100); f.ty = clamp(f.y + (Math.random() - 0.5) * 240, 120, HH - 100); }
+    const d = dist(f.x, f.y, f.tx, f.ty) || 1; f.x += (f.tx - f.x) / d * 40 * dt + Math.sin(t / 200 + f.ph) * 0.4; f.y += (f.ty - f.y) / d * 40 * dt + Math.cos(t / 170 + f.ph) * 0.5;
+  }
+  for (const b of critters.bugs) { b.x += Math.sin(t / 1500 * b.sp + b.ph) * 12 * dt; b.y += Math.cos(t / 1700 * b.sp + b.ph * 2) * 10 * dt; }
+  const nC = a >= 4 ? 8 : a >= 3 ? 6 : a >= 2 ? 3 : 0;
+  for (const c of critters.crows) {
+    c.on = c.show < nC && scene === "farm";
+    if (!c.on) continue;
+    c.t -= dt;
+    if (c.st === "sit") {
+      if (c.t <= 0) { c.t = 1 + Math.random() * 3; c.face = Math.random() < 0.5 ? -1 : 1; c.peck = 0.25; }
+      if (c.peck > 0) c.peck -= dt;
+      if (dist(pl.x, pl.y, c.x, c.y) < 110) { c.st = "fly"; c.vx = (c.x > pl.x ? 1 : -1) * (120 + Math.random() * 60); c.vy = -110; c.face = c.vx > 0 ? 1 : -1; c.t = 4; }
+    } else if (c.st === "fly") { c.x += c.vx * dt; c.y += c.vy * dt; c.vy += 15 * dt; if (c.t <= 0) { c.st = "back"; c.t = 6 + Math.random() * 6; } }
+    else { if (c.t <= 0 && dist(pl.x, pl.y, c.hx, c.hy) > 220) { c.x = c.hx + (c.hx > W / 2 ? 400 : -400); c.y = c.hy - 260; c.st = "land"; } }
+    if (c.st === "land") { const d = dist(c.x, c.y, c.hx, c.hy); c.face = c.hx > c.x ? 1 : -1; if (d < 6) { c.x = c.hx; c.y = c.hy; c.st = "sit"; c.t = 2; } else { c.x += (c.hx - c.x) / d * 170 * dt; c.y += (c.hy - c.y) / d * 170 * dt; } }
+  }
+}
+function drawCritters(t) {
+  const a = V.act, night = isNight() && scene !== "final";
+  // farfalle di giorno (atti 0-1)
+  if (a <= 1 && !night) for (const f of critters.flies) { const fl = Math.sin(t / 60 + f.ph) > 0, x = A(f.x), y = A(f.y); P(x, y, "#2a1e16"); if (fl) { P(x - 1, y - 1, f.c); P(x + 1, y - 1, f.c); P(x - 1, y, f.c); P(x + 1, y, f.c); } else { P(x - 1, y, f.c); P(x + 1, y, f.c); } }
+  // mosche attorno al banco della carne
+  if (a >= 4) for (let k = 0; k < 7; k++) { const an = t / (180 + k * 30) + k; P(A(STALL.x + Math.cos(an) * (30 + k * 6)), A(STALL.y - 50 + Math.sin(an * 1.3) * 18), "#101010"); }
+  // corvi
+  for (const c of critters.crows) {
+    if (!c.on) continue;
+    const fr = c.st === "sit" ? 0 : Math.sin(t / 70) > 0 ? 1 : 2, s = crowSprite(fr), x = A(c.x), y = A(c.y) - (c.st === "sit" && c.peck > 0 ? -1 : 0);
+    if (c.st === "sit") E(x, y + 1, 3, 1, "rgba(0,0,0,.25)");
+    pg.save(); if (c.face > 0) { pg.translate(x * 2, 0); pg.scale(-1, 1); } pg.drawImage(s, x - 3, y - 4); pg.restore();
+  }
+}
+/* lucciole: si disegnano DOPO il buio, così brillano */
+function drawGlowBugs(t) {
+  const a = V.act, night = isNight() && scene !== "final";
+  if (scene !== "farm" && scene !== "final") return;
+  if (!(night || a >= 3)) return;
+  const col = a >= 3 ? "#e04030" : "#d8ff70", n = a >= 3 ? 6 : 14;
+  for (let k = 0; k < n; k++) {
+    const b = critters.bugs[k]; if (!b) continue; const on = Math.sin(t / 400 * b.sp + b.ph * 3) > (a >= 3 ? 0.6 : -0.2); if (!on) continue;
+    const x = A(b.x), y = A(b.y);
+    if (a >= 3) { P(x, y, col); P(x + 2, y, col); continue; } // occhi rossi tra gli alberi
+    pg.fillStyle = "rgba(216,255,112,.25)"; pg.fillRect(x - 1, y - 1, 3, 3); P(x, y, col);
+  }
+}
+/* emettitori ambientali per scena */
+let ambT = 0;
+function ambient(dt, t) {
+  ambT += dt; const a = scene === "final" ? 0 : p.act;
+  if (scene === "farm" || scene === "final") {
+    // fumo dal comignolo
+    if (ambT % 0.35 < dt) part({ x: HOUSE.x + 57 + Math.random() * 6, y: HOUSE.y - 196, vx: 6 + Math.random() * 8, vy: -14 - Math.random() * 6, life: 3, max: 3, col: a >= 4 ? "#1a1414" : a >= 3 ? "#6a6460" : "#e8e8e8", kind: "smoke", s: 2 });
+    // foglie che cadono (vivo) / cenere (atto 4)
+    if (a <= 2 && Math.random() < dt * 0.9) { const tr = trees[Math.floor(Math.random() * trees.length)]; if (tr && tr.x > camX && tr.x < camX + vw && tr.y > camY && tr.y < camY + vh + 100) part({ x: tr.x + (Math.random() - 0.5) * 40, y: tr.y - 60 * tr.s, vx: 10, vy: 18, life: 3.5, max: 3.5, col: a >= 2 ? "#a08040" : Math.random() < 0.5 ? "#58a040" : "#80c858", kind: "leaf", ground: tr.y + 5 }); }
+    if (a >= 4 && Math.random() < dt * 6) part({ x: camX + Math.random() * vw, y: camY - 10, vx: -8 + Math.random() * 4, vy: 22 + Math.random() * 10, life: 7, max: 7, col: Math.random() < 0.3 ? "#5a1010" : "#3a3634", kind: "leaf" });
+    // scintillio dell'acqua nel pozzo
+    if (a < 3 && Math.random() < dt * 2) part({ x: WELL.x - 24 + Math.random() * 48, y: WELL.y - 28, life: 0.4, max: 0.4, col: "#c8e8ff", kind: "spark" });
+  } else if (scene === "under") {
+    if (Math.random() < dt * 2.5) { const x = camX + Math.random() * vw; part({ x, y: 145, vy: 10, g: 500, life: 2, max: 2, col: "#6a8090", ground: 150 + (x * 7 % 300), kind: "drip" }); }
+    if (Math.random() < dt * 3) part({ x: 50 + Math.random() * 130, y: 20 + Math.random() * 260, vx: (Math.random() - 0.5) * 6, vy: -4 + Math.random() * 8, life: 3, max: 3, col: "rgba(220,230,255,.7)", kind: "mote" });
+  } else if (scene === "house") {
+    if (Math.random() < dt * 1.5) part({ x: 100 + Math.random() * 70, y: 40 + Math.random() * 120, vx: 3, vy: 2, life: 4, max: 4, col: "rgba(255,248,220,.75)", kind: "mote" });
+  }
+  // polvere dei passi
+  if (pl.moving && scene !== "final" && Math.random() < dt * 9) part({ x: pl.x - pl.face * 6 + (Math.random() - 0.5) * 8, y: pl.y, vx: -pl.face * 8, vy: -8, life: 0.45, max: 0.45, col: scene === "under" ? "rgba(70,50,36,.8)" : scene === "house" ? "rgba(200,170,130,.6)" : surface() === "blood" ? "rgba(120,10,10,.8)" : "rgba(220,200,160,.75)", kind: "dust", s: 2 });
+}
+function updParts(dt) {
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const q = parts[i]; q.life -= dt; if (q.life <= 0) { parts.splice(i, 1); continue; }
+    q.vy += q.g * dt; q.x += q.vx * dt; q.y += q.vy * dt;
+    if (q.kind === "leaf") q.x += Math.sin(q.life * 3 + q.max) * 20 * dt;
+    if (q.kind === "smoke") { q.vx += 4 * dt; q.s = 2 + (1 - q.life / q.max) * 3; }
+    if (q.ground && q.y > q.ground) {
+      if (q.kind === "drip") for (let k = 0; k < 3; k++) part({ x: q.x, y: q.ground, vx: (k - 1) * 30, vy: -30, g: 200, life: 0.25, max: 0.25, col: q.col });
+      if (q.kind === "leaf") { q.y = q.ground; q.vx = q.vy = 0; q.g = 0; q.ground = 0; q.kind = "rest"; q.life = Math.min(q.life, 2); }
+      else if (q.kind !== "rest") { parts.splice(i, 1); }
+    }
+  }
+}
+function drawParts(t) {
+  for (const q of parts) {
+    const f = q.life / q.max, x = A(q.x), y = A(q.y);
+    if (q.kind === "smoke") { if (f < 0.25 && Math.sin(t / 50 + x) > 0) continue; const r = Math.round(q.s); E(x, y, r, r, q.col); continue; }
+    if (q.kind === "spark") { if (f < 0.3 && Math.sin(t / 40) > 0) continue; P(x, y, q.col); if (f > 0.5) { P(x - 1, y, q.col); P(x + 1, y, q.col); P(x, y - 1, q.col); P(x, y + 1, q.col); } continue; }
+    if (q.kind === "leaf" || q.kind === "rest") { P(x, y, q.col); if (q.kind === "leaf" && Math.sin(q.life * 8) > 0) P(x + 1, y, q.col); continue; }
+    if (q.kind === "dust") { if (f < 0.4) P(x, y, q.col); else R(x, y - 1, q.s, q.s, q.col); continue; }
+    if (q.kind === "mote") { if (Math.sin(t / 300 + q.max * 9) > -0.3) P(x, y, q.col); continue; }
+    if (q.kind === "drip") { R(x, y - 1, 1, 2, q.col); continue; }
+    P(x, y, q.col);
+  }
 }
 
 /* ---------------- loop di render ---------------- */
@@ -1793,10 +1914,14 @@ function frame(t) {
       drawUnder(t); list.push(...underItems(t));
       list.push({ y: pl.y, d: () => drawFarmer(pl.x, pl.y, pl.face, pl.walk, t, { can: false, dir: pl.dir }) });
     }
+    ambient(dt, t); updParts(dt);
+    if (scene === "farm" || scene === "final") updCritters(dt, t);
     list.sort((a, b) => a.y - b.y).forEach(o => o.d());
+    drawParts(t); if (scene === "farm" || scene === "final") drawCritters(t);
     if (scene === "final") { const r = 10 + (Math.sin(t / 300) > 0 ? 1 : 0); for (let k = 0; k < 16; k++) if ((k + Math.floor(t / 150)) % 2) { const an = k / 16 * Math.PI * 2; P(A(HOUSE.x) + Math.cos(an) * r, A(HOUSE.y + 14) + Math.sin(an) * r * 0.6, "#fff"); } }
     for (let i = fxl.length - 1; i >= 0; i--) { const f = fxl[i]; f.y -= dt * 30; f.a -= dt * 0.8; if (f.a <= 0) { fxl.splice(i, 1); continue; } if (f.a > 0.25 || Math.sin(t / 40) > 0) txt(f.t, f.x, f.y, 18, "#fff"); }
-    drawLight(t);
+    drawLight(t); drawGlowBugs(t);
+    if (scene === "under") { const hx = A(HEART.x), hy = A(HEART.y), pu = Math.sin(t / 380) > 0.2 ? 1 : 0; pg.globalAlpha = 0.18 + pu * 0.08; E(hx, hy, A(HEART.r) + 8 + pu * 2, A(HEART.r) * 0.85 + 6 + pu * 2, "#a01010"); pg.globalAlpha = 1; }
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.imageSmoothingEnabled = false;
     ctx.drawImage(pc, 0, 0, pc.width * kpx, pc.height * kpx);
     flushText();
