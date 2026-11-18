@@ -273,7 +273,9 @@ const DEBUG = new URLSearchParams(location.search).has("debug");
 const SPEED = DEBUG ? 60 : 1;
 const MIN_ABS = DEBUG ? 3000 : 30000;
 const H = 3600e3;
-const ACT_REQ = [null, { abs: 4, away: 20 * 60e3 }, { abs: 9, away: 3 * H }, { abs: 15, away: 10 * H }, { abs: 21, away: 24 * H, under: 1 }];
+// Avanzamento: conta SOLO chiudere e riaprire il gioco (ogni chiusura ≥ 30 s).
+// abs = chiusure totali necessarie; i beat di ogni atto vanno comunque visti tutti. Partita ≈ 30-40 minuti.
+const ACT_REQ = [null, { abs: 4, away: 0 }, { abs: 9, away: 0 }, { abs: 15, away: 0 }, { abs: 21, away: 0, under: 1 }];
 
 const SEEDS = {
   lattuga:  { e: "🥬", n: "Lattuga",  n4: "Lattuga rossa", cost: 2,   sell: 5,   grow: 40e3 },
@@ -2150,7 +2152,7 @@ async function boot() {
   if (db) remote = await fbGet(`${ROOT}/players/${pid}`);
   let saved = remote && local ? ((remote.saveAt || 0) >= (local.saveAt || 0) ? remote : local) : (remote || local);
   if (remote && saved && saved !== remote && remote.lastSeen > (saved.lastSeen || 0)) saved.lastSeen = remote.lastSeen;
-  if (DEBUG) debugPanel();
+  if (DEBUG) { debugPanel(); window.__dbg = { get p() { return p; }, get scene() { return scene; }, pl, ghost, get frozen() { return frozen; }, get mOpen() { return mOpen; } }; }
 
   if (!saved) {
     p = fresh("Contadino"); computeV(); applyAct(); updHud(); renderBar();
