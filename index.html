@@ -1050,13 +1050,13 @@ const SLEEP_T = [
 ];
 function goSleep() {
   const a = p.act;
-  if (a >= 4) { SND.fx.sting(); toast("Nel letto c'è qualcuno. Ha la tua forma.\nSe ti sdrai, apre gli occhi."); return; }
+  if (a >= 4) { SND.fx.sting(); toast("Nel letto c'è qualcuno. Ha la tua forma.\nNon ti serve il letto.\nChiudi il gioco e basta."); return; }
   frozen = true; $("#fade").classList.add("on");
   setTimeout(() => { showSleep(); $("#fade").classList.remove("on"); }, 700);
 }
 function showSleep() {
   const a = Math.min(p.act, 3), T = SLEEP_T[a], el = $("#sleep");
-  el.className = a >= 3 ? "a3" : a === 2 ? "a2" : "";
+  el.className = a >= 3 ? "a3" : a === 2 ? "a2" : ""; el.querySelector(".zz").textContent = a >= 3 ? "👁️" : "💤";
   $("#slT").textContent = T.t.replace("{name}", p.name);
   ["#sl1", "#sl2", "#sl3"].forEach((q, i) => $(q).textContent = T.s[i]);
   $("#slHow").textContent = isTouch ? "Come si chiude: torna alla schermata Home del telefono, oppure chiudi il browser dalle app recenti. Resta via almeno 30 secondi." : "Come si chiude: chiudi questa scheda del browser (o cambia scheda). Resta via almeno 30 secondi.";
