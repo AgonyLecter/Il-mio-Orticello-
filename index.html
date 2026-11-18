@@ -274,8 +274,7 @@ const isNight = () => { const h = new Date().getHours(); return h < 6 || h >= 21
 const SND = (() => {
   let ac = null, master, mus, amb, sfx, revIn, lp, nb, windG, windF, droneG;
   let on = localStorage.getItem("orto_mute") !== "1";
-  let nextT = 0, ni = 0, loop = 0, lastHB = 0;
-  const MEL = [0, 4, 7, 12, 11, 7, 4, 2, 0, 4, 7, 9, 7, 4, 2, -1, 0, 2, 4, 7, 9, 7, 4, 0, 2, 4, 2, -1, 0, -1, -1, -1];
+  let nextT = 0, lastHB = 0;
   const minor = n => { const m = ((n % 12) + 12) % 12; return (m === 4 || m === 9 || m === 11) ? n - 1 : n; };
   function impulse(dur, dec) {
     const len = ac.sampleRate * dur, b = ac.createBuffer(2, len, ac.sampleRate);
@@ -288,7 +287,7 @@ const SND = (() => {
     ac = new C();
     master = ac.createGain(); master.gain.value = on ? 0.85 : 0; master.connect(ac.destination);
     lp = ac.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 20000; lp.connect(master);
-    mus = ac.createGain(); mus.gain.value = 0.2; mus.connect(lp);
+    mus = ac.createGain(); mus.gain.value = 0.55; mus.connect(lp);
     amb = ac.createGain(); amb.gain.value = 0.6; amb.connect(lp);
     sfx = ac.createGain(); sfx.gain.value = 0.75; sfx.connect(master);
     const conv = ac.createConvolver(); conv.buffer = impulse(3, 2.4);
@@ -319,19 +318,70 @@ const SND = (() => {
     s.connect(f); f.connect(envGain(dest, t, a, peak, dec)); s.start(t, Math.random()); s.stop(t + a + dec + 0.05);
   }
   function box(f, t, det, vol) { tone(f, "sine", t, 0.004, 1.3, 0.28 * vol, mus, 0, det); tone(f * 4.01, "sine", t, 0.002, 0.35, 0.05 * vol, mus, 0, det); }
+  /* ---------- CHIPTUNE: sequencer a 8 bit (brano originale) ---------- */
+  const _ = null, HO = "-";
+  // melodia in ottavi, semitoni sopra il Do5; "-" = tieni, null = pausa
+  const LEAD = [
+    [12, HO, 7, HO, 4, 7, 12, 14], [11, HO, 7, HO, 2, HO, 7, 11], [9, HO, 12, HO, 16, 14, 12, 9], [5, HO, 9, 12, 11, HO, 7, HO],
+    [12, HO, 16, HO, 19, 16, 12, HO], [17, HO, 16, 14, 12, HO, 9, HO], [7, 9, 11, 14, 12, 11, 9, 7], [12, HO, HO, HO, 7, HO, _, _],
+  ];
+  const ROOT = [0, -5, -3, -7, 0, -7, -5, 0];           // basso: Do Sol La- Fa | Do Fa Sol Do (sopra il Do3)
+  const CH = [[0, 4, 7], [-5, -1, 2], [-3, 0, 4], [-7, -3, 0], [0, 4, 7], [-7, -3, 0], [-5, -1, 2], [0, 4, 7]];
+  let sq = 0, waves = {};
+  function pulse(d) {
+    if (waves[d]) return waves[d];
+    const N = 32, re = new Float32Array(N), im = new Float32Array(N);
+    for (let n = 1; n < N; n++) { const k = 2 / (n * Math.PI) * Math.sin(n * Math.PI * d); re[n] = k * Math.cos(n * Math.PI * d); im[n] = k * Math.sin(n * Math.PI * d); }
+    return (waves[d] = ac.createPeriodicWave(re, im));
+  }
+  function chip(f, t, len, peak, kind, det = 0, dest = mus) {
+    const o = ac.createOscillator();
+    if (kind === "tri") o.type = "triangle"; else o.setPeriodicWave(pulse(kind || 0.25));
+    o.frequency.setValueAtTime(f, t); o.detune.value = det;
+    const g = ac.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(peak, t + 0.006);
+    g.gain.setValueAtTime(peak, t + Math.max(0.01, len * 0.6)); g.gain.linearRampToValueAtTime(peak * 0.55, t + len * 0.85); g.gain.linearRampToValueAtTime(0, t + len);
+    o.connect(g); g.connect(dest); o.start(t); o.stop(t + len + 0.02);
+  }
+  function drum(kind, t, vol) {
+    if (kind === "k") { tone(150, "sine", t, 0.002, 0.12, 0.5 * vol, mus, 45); }
+    else if (kind === "s") noise(t, 0.002, 0.09, 0.22 * vol, "highpass", 1800, 0.7, mus);
+    else noise(t, 0.001, 0.03, 0.09 * vol, "highpass", 7000, 0.7, mus);
+  }
+  const hz = semi => 523.25 * Math.pow(2, semi / 12);
   function schedule() {
     if (!ac || ac.state !== "running") return;
-    const st = audioState(), a = st.act;
-    while (nextT < T() + 0.2) {
-      let step = [0.26, 0.28, 0.34, 0.46, 0.6][a];
-      if (a === 3) step *= 1 + (loop % 4) * 0.18;
-      const n = MEL[ni % MEL.length];
-      if (st.music && n >= 0) {
-        const semi = a >= 2 ? minor(n) : n;
-        let det = 0; if (a === 1 && Math.random() < 0.15) det = (Math.random() - 0.5) * 90; if (a >= 2) det = (Math.random() - 0.5) * 40;
-        if (!(a === 3 && Math.random() < 0.25)) box(523.25 * Math.pow(2, (semi + (a >= 3 ? -5 : 0)) / 12), nextT, det, a >= 3 ? 0.7 : 1);
+    const st = audioState(), a = st.act, house = st.scene === "house", night = st.night && st.scene === "farm", fin = st.scene === "final";
+    while (nextT < T() + 0.25) {
+      const bar = Math.floor(sq / 8) % 8, e = sq % 8, loopN = Math.floor(sq / 64);
+      let step = [0.24, 0.27, 0.31, 0.37, 0.45][a] * (house ? 1.3 : 1) * (night ? 1.18 : 1);
+      if (a === 3) step *= 1 + ((loopN + bar) % 3) * 0.12;            // il tempo si trascina
+      const minorize = a >= 2, shift = a >= 3 ? -5 : 0, oct = house ? -12 : 0;
+      const silentBar = a === 3 && (loopN + bar) % 5 === 4;          // battute che spariscono
+      if (st.music && !silentBar) {
+        // melodia
+        const n = LEAD[bar][e];
+        if (typeof n === "number" && !(a >= 1 && Math.random() < [0, 0.05, 0.08, 0.25, 0.3][a])) {
+          let len = 1; for (let k = e + 1; k < 8 && LEAD[bar][k] === HO; k++) len++;
+          let semi = (minorize ? minor(n) : n) + shift + oct;
+          if (a === 3 && Math.random() < 0.15) semi += 1;              // nota sbagliata
+          let det = a === 1 && Math.random() < 0.12 ? (Math.random() - 0.5) * 100 : a >= 2 ? (Math.random() - 0.5) * (a === 3 ? 70 : 30) : 0;
+          chip(hz(semi), nextT, step * len * 0.92, house || night ? 0.09 : 0.075, house || night ? "tri" : fin ? 0.125 : 0.25, det);
+          if (!house && !night && a === 0 && !fin) chip(hz(semi), nextT + step * 0.5, step * len * 0.6, 0.02, 0.5, 8);   // eco
+        }
+        // basso
+        if (!(a === 3 && bar % 2) && (e % 2 === 0)) {
+          const r = ROOT[bar] + shift + (minorize && (bar === 0 || bar === 4 || bar === 7) ? 0 : 0), oc = e % 4 === 2 ? 12 : 0;
+          chip(hz(r - 24 + oc), nextT, step * 1.7, a >= 3 ? 0.13 : 0.16, "tri", a >= 2 ? -15 : 0);
+        }
+        // arpeggio (solo giorno, atti 0-1)
+        if (!house && !night && a <= 1 && e % 2 === 1) { const c = CH[bar]; chip(hz(c[(e >> 1) % 3] + 12), nextT, step * 0.5, 0.025, 0.125); }
+        // batteria
+        if (!house && !night) {
+          const dv = [1, 0.9, 0.6, 0.45, 0][a];
+          if (dv) { if (e === 0 || e === 4) drum("k", nextT, dv); if ((e === 2 || e === 6) && a <= 1) drum("s", nextT, dv); if (a <= 2) drum("h", nextT, dv * (e % 2 ? 0.6 : 1)); }
+        } else if (night && e % 4 === 0) drum("h", nextT, 0.4);
       }
-      nextT += step; ni++; if (ni % MEL.length === 0) loop++;
+      nextT += step; sq++;
     }
   }
   function ambTick() {
@@ -362,11 +412,11 @@ const SND = (() => {
       else if (s === "wood") { tone(150 + Math.random() * 30, "triangle", t, 0.003, 0.08, 0.12); noise(t, 0.003, 0.05, 0.05, "bandpass", 1500, 2); }
       else if (s === "cave") noise(t, 0.004, 0.12, 0.2, "lowpass", 600, 1);
       else if (s === "blood") { noise(t, 0.005, 0.12, 0.15, "lowpass", 500, 3); tone(90, "sine", t, 0.005, 0.1, 0.06); } },
-    plant() { const t = T(); noise(t, 0.005, 0.15, 0.25, "lowpass", 400); tone(120, "sine", t, 0.005, 0.15, 0.15, sfx, 70); },
+    plant() { const t = T(); noise(t, 0.005, 0.15, 0.25, "lowpass", 400); chip(392, t, 0.06, 0.05, 0.25, 0, sfx); chip(523, t + 0.06, 0.08, 0.05, 0.25, 0, sfx); },
     water() { const t = T(); noise(t, 0.05, 0.5, 0.14, "bandpass", 900, 1.5, sfx, 2400); },
-    harvest() { const t = T(); tone(500, "sine", t, 0.003, 0.08, 0.2, sfx, 900); box(1046, t + 0.05, 0, p && p.act >= 3 ? 0.4 : 1); },
+    harvest() { const t = T(), bad = p && p.act >= 3; [0, 4, 7, 12].forEach((n, i) => chip(hz(n + 7 + (bad ? -1 : 0)), t + i * 0.055, 0.07, 0.07, 0.25, bad ? -40 : 0, sfx)); },
     squish() { const t = T(); noise(t, 0.01, 0.25, 0.3, "lowpass", 300, 6, sfx, 120); tone(70, "sine", t, 0.01, 0.2, 0.2, sfx, 40); },
-    coin() { const t = T(); tone(1318, "square", t, 0.002, 0.06, 0.05); tone(1760, "square", t + 0.07, 0.002, 0.15, 0.05); },
+    coin() { const t = T(); chip(1318, t, 0.07, 0.06, 0.5, 0, sfx); chip(1760, t + 0.07, 0.2, 0.06, 0.5, 0, sfx); },
     splash() { const t = T(); noise(t, 0.01, 0.9, 0.3, "lowpass", 1400, 1, sfx, 300); },
     door() { const t = T(); const o = ac.createOscillator(); o.type = "sawtooth"; o.frequency.setValueAtTime(95, t); o.frequency.linearRampToValueAtTime(150, t + 0.35); o.frequency.linearRampToValueAtTime(85, t + 0.8);
       const f = ac.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = 700; f.Q.value = 6; o.connect(f); f.connect(envGain(sfx, t, 0.05, 0.12, 0.8)); o.start(t); o.stop(t + 0.95);
@@ -394,9 +444,9 @@ const SND = (() => {
       for (const ff of [800, 1150, 2400]) { const f = ac.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = ff; f.Q.value = 8; o.connect(f); f.connect(envGain(sfx, t, 0.05, 0.15, 1.3)); }
       o.start(t); o.stop(t + 1.5); noise(t, 0.05, 1.3, 0.15, "bandpass", 2000, 2); },
     slash() { const t = T(); noise(t, 0.003, 0.18, 0.4, "highpass", 2500, 1, sfx, 6000); noise(t + 0.12, 0.005, 0.3, 0.5, "lowpass", 400, 4); },
-    music(tune) { const t = T(); const notes = tune || [0, 4, 7, 12, 7, 4, 0]; notes.forEach((n, i) => box(523.25 * Math.pow(2, n / 12), t + i * 0.3, 0, 1)); },
+    music(tune) { const t = T(); const notes = tune || [0, 4, 7, 12, 7, 4, 0]; notes.forEach((n, i) => { chip(hz(n), t + i * 0.16, 0.15, 0.08, 0.25, 0, sfx); chip(hz(n - 12), t + i * 0.16, 0.15, 0.05, "tri", 0, sfx); }); },
     rev() { const t = T(); [12, 7, 9, 7, 4, 0].forEach((n, i) => box(261 * Math.pow(2, minor(n) / 12), t + i * 0.55, -30, 0.8)); },
-    pop() { const t = T(); tone(700, "sine", t, 0.002, 0.06, 0.08, sfx, 1100); },
+    pop() { const t = T(); chip(880, t, 0.04, 0.05, 0.125, 0, sfx); chip(1320, t + 0.04, 0.05, 0.05, 0.125, 0, sfx); },
   };
   return {
     init, fx: new Proxy(fx, { get: (o, k) => (...a) => { if (ac && ac.state === "running") try { o[k](...a); } catch (e) {} } }),
