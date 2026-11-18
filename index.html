@@ -100,6 +100,9 @@ body[data-act="4"] .card .ln.red{color:#e04040}
 #rotate{z-index:110;background:#1d1a16;color:#f6ecd9;display:none}
 #rotate .ph{font-size:64px;animation:rot 2s ease-in-out infinite}
 #rotate b{font-size:20px}
+#start,#rotate{cursor:pointer}
+#rotate .tap{margin-top:14px;padding:8px 14px;border:3px solid #f6ecd9;border-radius:4px;font-size:15px;animation:pulse 1.4s ease-in-out infinite}
+#rotate .tap:empty{display:none}
 @media (orientation:portrait){body.touch #rotate:not(.hidden){display:flex}}
 #start .sub{margin:0;font-size:14px;font-weight:700;min-height:1.2em;white-space:pre-line}
 /* avvio: si guasta col procedere della storia */
@@ -209,7 +212,7 @@ body[data-act="4"] .card .go{background:#6a1010;box-shadow:inset 0 -4px 0 #3a080
 <div id="modal" class="ov hidden"><div class="card"></div></div>
 <div id="ending" class="ov hidden"><div class="card"></div></div>
 <div id="crash" class="hidden"></div>
-<div id="rotate"><div class="ph">📱</div><b>Ruota il telefono</b><div>Il Mio Orticello si gioca in orizzontale 🌱</div></div>
+<div id="rotate"><div class="ph">📱</div><b>Ruota il telefono</b><div>Il Mio Orticello si gioca in orizzontale 🌱</div><div id="rotTap" class="tap"></div></div>
 <div id="start"><div class="logo">🌱</div><h1>Il Mio Orticello</h1><p class="sub"></p><button id="startBtn">▶ Tocca per giocare</button><p id="startHint"></p></div>
 
 <script type="module">
@@ -2106,11 +2109,19 @@ const startLook = (() => {
   };
   setTimeout(tick, lvl >= 4 ? 700 : 2500);
 })();
-$("#startBtn").addEventListener("click", () => {
+/* un tocco OVUNQUE (schermata d'avvio o avviso "ruota") avvia il gioco a schermo intero.
+   Su Android il blocco in orizzontale gira lo schermo da solo. */
+let started = false;
+function startGame() {
   SND.init(); goFull();
+  if (started) return; started = true;
   $("#start").classList.add("hidden");
   boot();
-}, { once: true });
+}
+$("#start").addEventListener("click", startGame);
+$("#rotate").addEventListener("click", startGame);
+if (fsCan && screen.orientation && screen.orientation.lock) $("#rotTap").textContent = "👆 Tocca lo schermo: si gira da solo a schermo intero";
+else $("#rotTap").textContent = "👆 Oppure tocca per iniziare";
 </script>
 </body>
 </html>
