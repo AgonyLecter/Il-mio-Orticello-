@@ -1082,7 +1082,13 @@ function applyAbsence(ms, kind, start, end) {
   }
   p.energy = Math.min(emax(), p.energy + Math.floor(eff / 20000));
   if (kind === "closed") { scene = "house"; computeV(); pl.x = 230; pl.y = 260; document.body.classList.add("nohud"); }
-  if (!counted && !cheat) { if (ripe) toast(`🌱 ${ripe === 1 ? "Una piantina è pronta" : ripe + " piantine sono pronte"}!`); updHud(); save(); return; }
+  if (!counted && !cheat) {
+    const a = p.act, d = fmtDur(ms), need = fmtDur(MIN_ABS);
+    const shortMsg = ms >= 3000 ? [`😴 Hai dormito solo ${d}.\nLe piantine hanno bisogno di almeno ${need}!`, `😴 Solo ${d} di sonno.\nServono almeno ${need} perché succeda qualcosa.`, `Solo ${d}. Le piantine non hanno fatto in tempo.`, `${d}. Troppo poco.\nChiudi gli occhi più a lungo.`, `${d}. Non mi basta.`][Math.min(a, 4)] : "";
+    const ripeMsg = ripe ? `🌱 ${ripe === 1 ? "Una piantina è pronta" : ripe + " piantine sono pronte"}!` : "";
+    if (shortMsg || ripeMsg) toast([shortMsg, ripeMsg].filter(Boolean).join("\n"));
+    updHud(); save(); return;
+  }
 
   p.abs++; p.away += eff;
   if (kind === "closed") { p.closes++; bumpStat("closes"); } else p.hides++;
@@ -1150,20 +1156,30 @@ function setFav(e) { $("#fav").href = "data:image/svg+xml," + encodeURIComponent
 function applyAct() { document.body.dataset.act = scene === "final" ? 0 : p.act; setFav(FAV[Math.min(p.act, 4)]); document.title = p.act >= 4 ? "🌱 Il Mio Orticello." : "🌱 Il Mio Orticello"; }
 
 /* ---------------- visibilità ---------------- */
-document.addEventListener("visibilitychange", () => {
-  if (document.hidden) SND.suspend(); else SND.resume();
+/* Sul telefono "chiudere l'app" quasi sempre mette la pagina in pausa invece di chiuderla:
+   quindi su touch un'assenza abbastanza lunga conta SEMPRE come chiusura (occhi chiusi).
+   Si ascoltano tutti gli eventi del ciclo di vita, e un'assenza si conta una volta sola. */
+function goneAway() {
   if (!p || ended || scene === "final") return;
-  if (document.hidden) {
-    p.hiddenSince = now(); p.lastSeen = now();
-    document.title = HIDDEN_TITLE[Math.min(p.act, 4)]; if (p.act >= 3) setFav("👁️");
-    saveNow(); uploadTrail();
-  } else {
-    const a = p.hiddenSince || p.lastSeen, b = now();
-    p.hiddenSince = 0; p.lastSeen = b; applyAct();
-    applyAbsence(b - a, "hidden", a, b);
-  }
+  if (!p.hiddenSince) p.hiddenSince = now();
+  p.lastSeen = now();
+  document.title = HIDDEN_TITLE[Math.min(p.act, 4)]; if (p.act >= 3) setFav("👁️");
+  saveNow(); uploadTrail();
+}
+function cameBack() {
+  if (document.hidden || !p || ended || scene === "final" || !p.hiddenSince) return;
+  const a = p.hiddenSince, b = now(), ms = b - a;
+  p.hiddenSince = 0; p.lastSeen = b; applyAct();
+  applyAbsence(ms, isTouch && ms >= MIN_ABS ? "closed" : "hidden", a, b);
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) { SND.suspend(); goneAway(); } else { SND.resume(); cameBack(); }
 });
-addEventListener("pagehide", () => { if (p && !ended) { p.lastSeen = now(); if (!p.hiddenSince) p.hiddenSince = now(); saveNow(); } });
+addEventListener("pagehide", goneAway);
+document.addEventListener("freeze", goneAway);
+addEventListener("pageshow", e => { if (e.persisted) cameBack(); });
+document.addEventListener("resume", cameBack);
+addEventListener("focus", cameBack);
 addEventListener("beforeunload", e => { if (p && p.act >= 4 && !ended) { e.preventDefault(); e.returnValue = ""; } });
 
 /* ---------------- "lui" negli alberi ---------------- */
